@@ -1,5 +1,6 @@
 from utils.train_utils import *
-# import open_clip
+import open_clip
+import clip
 from sklearn.cluster import KMeans
 
 from utils.train_utils import *
@@ -7,11 +8,13 @@ from utils.train_utils import *
 
 def cluster(cfg):
 
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
     if cfg['model_type'] == 'clip':
-        model, preprocess = clip.load(cfg['model_size'])
+        model, preprocess = clip.load(cfg['model_size'], device=device)
     elif cfg['model_type'] == 'open_clip':
-        model, _, preprocess = open_clip.create_model_and_transforms(cfg['model_size'], pretrained=cfg['openclip_pretrain'], device='cuda')
-        model = model.cuda()
+        model, _, preprocess = open_clip.create_model_and_transforms(cfg['model_size'], pretrained=cfg['openclip_pretrain'], device=device)
+        model = model.to(device)
         tokenizer = open_clip.get_tokenizer(cfg['model_size'])
     else:
         raise NotImplementedError
@@ -22,9 +25,9 @@ def cluster(cfg):
     for i in range((len(attributes) // batch_size) + 1):
         sub_attributes = attributes[i * batch_size: (i + 1) * batch_size]
         if cfg['model_type'] == 'clip':
-            clip_attributes_embeddings = clip.tokenize([get_prefix(cfg) + attr for attr in sub_attributes]).cuda()
+            clip_attributes_embeddings = clip.tokenize([get_prefix(cfg) + attr for attr in sub_attributes]).to(device)
         elif cfg['model_type'] == 'open_clip':
-            clip_attributes_embeddings = tokenizer([get_prefix(cfg) + attr for attr in sub_attributes]).cuda()
+            clip_attributes_embeddings = tokenizer([get_prefix(cfg) + attr for attr in sub_attributes]).to(device)
 
         attribute_embeddings += [embedding.detach().cpu() for embedding in
                                  model.encode_text(clip_attributes_embeddings)]

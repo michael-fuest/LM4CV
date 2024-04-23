@@ -18,6 +18,8 @@ def parse_config():
 
 def main(cfg):
 
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
     set_seed(cfg['seed'])
     print(cfg)
 
@@ -29,7 +31,7 @@ def main(cfg):
     if cfg['reinit']  and cfg['num_attributes'] != 'full':
         assert cfg['cluster_feature_method'] == 'linear'
         feature_train_loader, feature_test_loader = get_feature_dataloader(cfg)
-        model[0].weight.data = attributes_embeddings.cuda() * model[0].weight.data.norm(dim=-1, keepdim=True)
+        model[0].weight.data = attributes_embeddings.to(device) * model[0].weight.data.norm(dim=-1, keepdim=True)
         for param in model[0].parameters():
             param.requires_grad = False
         best_model, best_acc = train_model(cfg, cfg['epochs'], model, feature_train_loader, feature_test_loader)

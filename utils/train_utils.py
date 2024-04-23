@@ -4,10 +4,12 @@ evaluate zero-shot performance
 import copy
 import time
 
-# import open_clip
+import open_clip
 
 from dataset import FeatureDataset, OnlineScoreDataset
 from utils.dataset_utils import *
+
+device = "cuda" if torch.cuda.is_available() else "cpu"
 
 
 def set_seed(seed):
@@ -73,11 +75,14 @@ def get_feature_dataloader(cfg):
     if cfg['model_type'] == 'clip':
         model, preprocess = clip.load(cfg['model_size'])
     elif cfg['model_type'] == 'open_clip':
-        model, _, preprocess = open_clip.create_model_and_transforms(cfg['model_size'], pretrained=cfg['openclip_pretrain'], device='cuda')
+        model, _, preprocess = open_clip.create_model_and_transforms(cfg['model_size'], pretrained=cfg['openclip_pretrain'], device=device)
     else:
         raise NotImplementedError
 
     train_loader, test_loader = get_image_dataloader(cfg['dataset'], preprocess)
+
+    print(f"length of train_loader: {len(train_loader)}")
+    print(f"length of test_loader: {len(test_loader)}")
 
     train_features = get_image_embeddings(cfg, cfg['dataset'], model, train_loader, 'train')
     test_features = get_image_embeddings(cfg, cfg['dataset'], model, test_loader, 'test')
@@ -117,7 +122,7 @@ def get_score_dataloader(cfg, attribute_embeddings):
     if cfg['model_type'] == 'clip':
         model, preprocess = clip.load(cfg['model_size'])
     elif cfg['model_type'] == 'open_clip':
-        model, _, preprocess = open_clip.create_model_and_transforms(cfg['model_size'], pretrained=cfg['openclip_pretrain'], device='cuda')
+        model, _, preprocess = open_clip.create_model_and_transforms(cfg['model_size'], pretrained=cfg['openclip_pretrain'], device=device)
     else:
         raise NotImplementedError
     train_loader, test_loader = get_image_dataloader(cfg['dataset'], preprocess)
@@ -178,7 +183,7 @@ def calculate_worst_group_acc(predictions, labels, groups):
 
 def train_model(cfg, epochs, model, train_loader, test_loader, regularizer=None, configs=None):
 
-    model.cuda()
+    model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=cfg['lr'])
 
     loss_function = torch.nn.CrossEntropyLoss()
@@ -199,20 +204,20 @@ def train_model(cfg, epochs, model, train_loader, test_loader, regularizer=None,
         total_num = 0
         for idx, batch in enumerate(train_loader):
             s, t = batch[0], batch[1]
-            s = s.float().cuda()
-            t = t.long().cuda()
+            s = s.float().to(device)
+            t = t.long().to(device)
             output = model(s)
             loss = loss_function(output, t)
 
             if regularizer == 'mahalanobis':
-                mahalanobis_loss = (mahalanobis_distance(model[0].weight/model[0].weight.data.norm(dim=-1, keepdim=True), configs['mu'].cuda(),
-                        configs['sigma_inv'].cuda()) - configs['mean_distance']) / (configs['mean_distance']**cfg['division_power'])
+                mahalanobis_loss = (mahalanobis_distance(model[0].weight/model[0].weight.data.norm(dim=-1, keepdim=True), configs['mu'].to(device),
+                        configs['sigma_inv'].to(device)) - configs['mean_distance']) / (configs['mean_distance']**cfg['division_power'])
                 loss += torch.abs(mahalanobis_loss)
 
             elif regularizer == 'cosine':
 
                 weight = model[0].weight/model[0].weight.data.norm(dim=-1, keepdim=True)
-                loss += cfg['lambda'] * torch.sum((weight - configs['mu'].unsqueeze(0).cuda()) ** 2, dim=-1).mean()
+                loss += cfg['lambda'] * torch.sum((weight - configs['mu'].unsqueeze(0).to(device)) ** 2, dim=-1).mean()
 
             total_hit += torch.sum(t == output.argmax(-1))
             total_num += len(t)
@@ -228,7 +233,7 @@ def train_model(cfg, epochs, model, train_loader, test_loader, regularizer=None,
             labels = []
             for idx, batch in enumerate(test_loader):
                 s, t = batch[0], batch[1]
-                s = s.float().cuda()
+                s = s.float().to(device)
                 output = model(s).cpu()
                 pred = torch.argmax(output, dim=-1)
                 if len(batch) == 3:
@@ -289,8 +294,8 @@ def get_image_embeddings(cfg, dataset, model, loader, mode='train'):
             for i, batch in tqdm(enumerate(loader), total=len(loader)):
                 (images, target) = batch[0], batch[1]
                 # images: [batch_size, 3, 224, 224]
-                images = images.cuda()
-                target = target.cuda()
+                images = images.to(device)
+                target = target.to(device)
                 image_features = model.encode_image(images)
                 # [batch_size, 768]
                 image_features /= image_features.norm(dim=-1, keepdim=True)
@@ -309,12 +314,12 @@ def extract_concept_scores(loader, model, attribute_embeddings):
         scores = []
 
         for i, (image_features, target) in tqdm(enumerate(loader), total=len(loader)):
-            image_features = image_features.cuda().float()
-            # target = target.cuda()
+            image_features = image_features.to(device).float()
+            # target = target.to(device)
             # image_features = model.encode_image(images).float()
             # image_features /= image_features.norm(dim=-1, keepdim=True)
 
-            logits = image_features @ attribute_embeddings.float().T.cuda()
+            logits = image_features @ attribute_embeddings.float().T.to(device)
             scores.extend(logits.cpu().to(torch.float16).tolist())
 
     return scores

@@ -18,7 +18,8 @@ import pandas as pd
 import torchvision
 import transformers
 from collections import defaultdict
-from dataset import ScoreDataset, ImagenetA
+from dataset import ImagenetA, images4LMU
+from PIL import Image
 import sklearn
 from sentence_transformers import SentenceTransformer
 from torch.utils.data import DataLoader
@@ -151,6 +152,16 @@ def get_labels(dataset):
 
         train_labels, test_labels = true_labels[:3680], true_labels[-3669:]
 
+    elif dataset == "images4lmu":
+        with open("./data/images4lmu/image_class_labels.txt", 'r') as file:
+            true_labels = [eval(line.split(" ")[1]) for line in file.read().strip().split("\n")]
+        file.close()
+        true_labels = clean_label(true_labels)
+
+        assert len(true_labels) == 60
+
+        train_labels, test_labels = true_labels[:30], true_labels[-30:]
+
     else:
         raise NotImplementedError
 
@@ -236,7 +247,15 @@ def get_image_dataloader(dataset, preprocess, preprocess_eval=None, shuffle=Fals
         train_loader = torch.utils.data.DataLoader(trainset, batch_size=512, shuffle=False)
         test_loader = torch.utils.data.DataLoader(testset, batch_size=512, shuffle=False)
 
+    elif dataset == "images4lmu":
+        train_dataset = images4LMU(root_dir='./data/', transform=preprocess)
+        test_dataset = images4LMU(root_dir='./data/', transform=preprocess)
 
+        print("Train dataset:", len(train_dataset))
+        print("Test dataset:", len(test_dataset))
+
+        train_loader = DataLoader(train_dataset, batch_size=2, shuffle=shuffle)
+        test_loader = DataLoader(test_dataset, batch_size=2, shuffle=shuffle)
     else:
         raise NotImplementedError
 
@@ -268,6 +287,8 @@ def get_folder_name(dataset):
         return "oxford-iiit-pet"
     elif dataset == "waterbirds":
         return 'waterbird_complete95_forest2water2'
+    elif dataset == "images4lmu":
+        return 'images4lmu'
     else:
         raise NotImplementedError
 
@@ -322,7 +343,9 @@ def get_attributes(cfg):
 
     elif cfg['attributes'] == 'oxford_pets':
         return open("./data/oxford-iiit-pet/oxford_pets_attributes.txt", 'r').read().strip().split("\n")
-
+    
+    elif cfg['attributes'] == 'images4lmu':
+        return open("./data/images4lmu/images4lmu_attributes.txt", 'r').read().strip().split("\n") 
     else:
         raise NotImplementedError
 
@@ -353,5 +376,12 @@ def get_prefix(cfg):
         return "A photo of an object with "
     elif cfg['dataset'] in ['imagenet-animal', 'imagenet-a']:
         return "A photo of an animal with "
+    elif cfg['dataset'] == 'images4lmu':
+        return "A microscopical image with "
     else:
         raise NotImplementedError
+
+
+
+
+

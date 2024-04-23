@@ -1,5 +1,6 @@
 import os
 import pdb
+import shutil
 import torch
 import pandas as pd
 from torchvision.datasets.folder import default_loader
@@ -7,6 +8,7 @@ import numpy as np
 from torchvision.datasets.utils import download_url
 from torch.utils.data import Dataset, Subset
 import torchvision.transforms as transforms
+from tqdm import tqdm
 from PIL import Image
 
 
@@ -450,3 +452,94 @@ class FeatureDataset(torch.utils.data.Dataset):
 
     def __len__(self):
         return len(self.features)
+    
+class images4LMU(Dataset):
+    def __init__(self, root_dir, with_attributes=False, transform=None):
+        self.root_dir = root_dir + 'images4lmu/'
+        self._convert_all_tif_to_png()
+        self._load_labels()
+        self.images = self._load_images()
+
+        if with_attributes:
+            assert os.path.exists(root_dir + 'attributes.txt'), print(
+                f"No attributes found, please run description.py for attributesfirst!")
+            with open(root_dir + 'attributes.txt') as file:
+                self.attributes = file.read().strip().split("\n")
+            file.close()
+
+    def __len__(self):
+        return len(self.images)
+    
+    def __getitem__(self, idx):
+        img_name = self.images[idx]
+        image = Image.open(img_name)
+        label = self.labels[idx]
+
+        if self.transform:
+            image = self.transform(image)
+
+        return image, label
+    
+    def _load_labels(self):
+        if not os.path.exists(self.root_dir + 'images'):
+            os.makedirs(self.root_dir + 'images')
+        
+        output_file = "image_class_labels.txt"
+        self.create_label_file(output_file)
+        labels = []
+        with open(self.root_dir + output_file, 'r') as file:
+            labels = [eval(line.split(" ")[1]) for line in file.read().strip().split("\n")]
+            file.close()
+
+        for root, dirs, files in os.walk(self.root_dir):
+            for file in files:
+                if file.endswith('.png'):
+                    shutil.move(os.path.join(root, file), self.root_dir + 'images/' + file)
+        return labels
+
+    def _convert_all_tif_to_png(self):
+        for root, dirs, files in os.walk(self.root_dir):
+            for file in tqdm(files):
+                if file.endswith('.tif'):
+                    tif_path = os.path.join(root, file)
+                    png_path = tif_path.replace('.tif', '.png')
+                    tif_to_png(tif_path, png_path)
+                    os.remove(tif_path)
+                    print(f'Converted {tif_path} to {png_path} and removed the original file')
+
+
+    def _load_images(self):
+        images = []
+        for root, dirs, files in os.walk(self.root_dir + 'images/'):
+            for file in files:
+                if file.endswith('.png'):
+                    images.append(os.path.join(root, file))
+        return images
+    
+    
+    def create_label_file(self, output_file):
+        label_dict = {}
+        current_label = 0
+        index = 0
+
+        with open(self.root_dir + output_file, 'w') as file:
+            for folder in sorted(os.listdir(self.root_dir)):
+                folder_path = os.path.join(self.root_dir, folder)
+                if os.path.isdir(folder_path): 
+                    if folder not in label_dict:
+                        label_dict[folder] = current_label
+                        current_label += 1
+
+                    for image in sorted(os.listdir(folder_path)):
+                        if image.lower().endswith(('.png', '.jpg', '.jpeg', '.tif', '.tiff')):  # Checking image formats
+                            file.write(f'{index} {label_dict[folder]}\n')
+                            index += 1
+
+
+def tif_to_png(tif_path, png_path):
+        tif_img = Image.open(tif_path)
+        tif_array = np.array(tif_img)
+        normalized_tif_array = (tif_array / 65535.0) * 255.0
+        png_img = Image.fromarray(normalized_tif_array.astype(np.uint8))
+        png_img.save(png_path, format='PNG')
+        
