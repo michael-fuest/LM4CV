@@ -81,9 +81,6 @@ def get_feature_dataloader(cfg):
 
     train_loader, test_loader = get_image_dataloader(cfg['dataset'], preprocess)
 
-    print(f"length of train_loader: {len(train_loader)}")
-    print(f"length of test_loader: {len(test_loader)}")
-
     train_features = get_image_embeddings(cfg, cfg['dataset'], model, train_loader, 'train')
     test_features = get_image_embeddings(cfg, cfg['dataset'], model, test_loader, 'test')
 
@@ -105,6 +102,17 @@ def get_feature_dataloader(cfg):
 
         train_score_dataset = FeatureDataset(train_features, train_labels, train_group_array)
         test_score_dataset = FeatureDataset(test_features, test_labels, test_group_array)
+
+    if cfg['dataset'] == 'images4lmu':
+        train_labels, test_labels = get_labels(cfg['dataset'])
+        if len(train_labels) != len(train_features):    
+            train_idx = train_loader.dataset.data_indices
+            test_idx = test_loader.dataset.data_indices
+            train_features = train_features[train_idx]
+            test_features = test_features[test_idx]
+
+        train_score_dataset = FeatureDataset(train_features, train_labels)
+        test_score_dataset = FeatureDataset(test_features, test_labels)
 
     else:
         train_labels, test_labels = get_labels(cfg['dataset'])
@@ -198,7 +206,7 @@ def train_model(cfg, epochs, model, train_loader, test_loader, regularizer=None,
         epochs = - epochs
         no_break = True
 
-    for epoch in range(epochs):
+    for epoch in tqdm(range(epochs)):
         # train:
         total_hit = 0
         total_num = 0

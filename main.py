@@ -9,7 +9,7 @@ from cluster import cluster
 def parse_config():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config",
-                        default='cub_bn.yaml',
+                        default='configs/images4lmu.yaml',
                         help='configurations for training')
     parser.add_argument("--outdir", default='./outputs',
                         help='where to put all the results')

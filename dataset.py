@@ -3,6 +3,7 @@ import pdb
 import shutil
 import torch
 import pandas as pd
+import random
 from torchvision.datasets.folder import default_loader
 import numpy as np
 from torchvision.datasets.utils import download_url
@@ -454,13 +455,18 @@ class FeatureDataset(torch.utils.data.Dataset):
         return len(self.features)
     
 class images4LMU(Dataset):
-    def __init__(self, root_dir, with_attributes=False, transform=None):
+    def __init__(self, root_dir, split='trainval', with_attributes=False, transform=None, shuffle=False):
         self.root_dir = root_dir + 'images4lmu/'
+        self.transform = transform
+        self.shuffle = shuffle
+        self.with_attributes = with_attributes
+        self.split = split
         self._convert_all_tif_to_png()
-        self._load_labels()
+        self.labels = self._load_labels()
         self.images = self._load_images()
+        self._split_data()
 
-        if with_attributes:
+        if self.with_attributes:
             assert os.path.exists(root_dir + 'attributes.txt'), print(
                 f"No attributes found, please run description.py for attributesfirst!")
             with open(root_dir + 'attributes.txt') as file:
@@ -468,38 +474,34 @@ class images4LMU(Dataset):
             file.close()
 
     def __len__(self):
-        return len(self.images)
+        return len(self.data_indices)
     
     def __getitem__(self, idx):
-        img_name = self.images[idx]
+        actual_idx = self.data_indices[idx]
+        img_name = self.images[actual_idx]
         image = Image.open(img_name)
-        label = self.labels[idx]
+        label = self.labels[actual_idx]
 
         if self.transform:
             image = self.transform(image)
 
+        if self.with_attributes:
+            return image, label, self.attributes[actual_idx]
+
         return image, label
     
     def _load_labels(self):
-        if not os.path.exists(self.root_dir + 'images'):
-            os.makedirs(self.root_dir + 'images')
-        
         output_file = "image_class_labels.txt"
         self.create_label_file(output_file)
         labels = []
         with open(self.root_dir + output_file, 'r') as file:
             labels = [eval(line.split(" ")[1]) for line in file.read().strip().split("\n")]
             file.close()
-
-        for root, dirs, files in os.walk(self.root_dir):
-            for file in files:
-                if file.endswith('.png'):
-                    shutil.move(os.path.join(root, file), self.root_dir + 'images/' + file)
         return labels
 
     def _convert_all_tif_to_png(self):
-        for root, dirs, files in os.walk(self.root_dir):
-            for file in tqdm(files):
+        for root, dirs, files in tqdm(os.walk(self.root_dir)):
+            for file in files:
                 if file.endswith('.tif'):
                     tif_path = os.path.join(root, file)
                     png_path = tif_path.replace('.tif', '.png')
@@ -510,7 +512,7 @@ class images4LMU(Dataset):
 
     def _load_images(self):
         images = []
-        for root, dirs, files in os.walk(self.root_dir + 'images/'):
+        for root, dirs, files in os.walk(self.root_dir):
             for file in files:
                 if file.endswith('.png'):
                     images.append(os.path.join(root, file))
@@ -533,7 +535,24 @@ class images4LMU(Dataset):
                     for image in sorted(os.listdir(folder_path)):
                         if image.lower().endswith(('.png', '.jpg', '.jpeg', '.tif', '.tiff')):  # Checking image formats
                             file.write(f'{index} {label_dict[folder]}\n')
-                            index += 1
+                            index += 1 
+
+    def _split_data(self):
+        indices = list(range(len(self.images)))
+        if self.shuffle:
+            random.seed(42)
+            random.shuffle(indices)
+    
+        split_idx = int(0.8 * len(indices))
+        if self.split == 'trainval':
+            self.data_indices = indices[:split_idx]
+        elif self.split == 'test':
+            self.data_indices = indices[split_idx:]
+        else:
+            raise ValueError("Unsupported split. Choose from 'trainval' or 'test'.")
+        
+        print(f"Total images: {len(self.images)}, {self.split} images: {self.data_indices}")
+
 
 
 def tif_to_png(tif_path, png_path):

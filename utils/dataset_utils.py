@@ -160,7 +160,16 @@ def get_labels(dataset):
 
         assert len(true_labels) == 60
 
-        train_labels, test_labels = true_labels[:30], true_labels[-30:]
+        indices = np.arange(len(true_labels))
+        np.random.seed(42) 
+        np.random.shuffle(indices)
+        
+        split_point = int(len(indices) * 0.8)
+        train_indices = indices[:split_point]
+        test_indices = indices[split_point:]
+        
+        train_labels = [true_labels[i] for i in train_indices]
+        test_labels = [true_labels[i] for i in test_indices]
 
     else:
         raise NotImplementedError
@@ -248,17 +257,16 @@ def get_image_dataloader(dataset, preprocess, preprocess_eval=None, shuffle=Fals
         test_loader = torch.utils.data.DataLoader(testset, batch_size=512, shuffle=False)
 
     elif dataset == "images4lmu":
-        train_dataset = images4LMU(root_dir='./data/', transform=preprocess)
-        test_dataset = images4LMU(root_dir='./data/', transform=preprocess)
+        train_dataset = images4LMU(root_dir='./data/', split='trainval', transform=preprocess, shuffle=True)
+        test_dataset = images4LMU(root_dir='./data/', split='test', transform=preprocess, shuffle=True)
 
         print("Train dataset:", len(train_dataset))
         print("Test dataset:", len(test_dataset))
 
-        train_loader = DataLoader(train_dataset, batch_size=2, shuffle=shuffle)
-        test_loader = DataLoader(test_dataset, batch_size=2, shuffle=shuffle)
+        train_loader = DataLoader(train_dataset, batch_size=1, shuffle=shuffle)
+        test_loader = DataLoader(test_dataset, batch_size=1, shuffle=shuffle)
     else:
         raise NotImplementedError
-
 
     return train_loader, test_loader
 
