@@ -261,7 +261,7 @@ def train_model(cfg, epochs, model, train_loader, test_loader, regularizer=None,
             best_acc = acc
             best_model = copy.deepcopy(model)
 
-        if epoch % 10 == 0:
+        if epoch % 10 == 0 and epoch > 0:
             print(f"Epoch [{epoch}], Best accuracy:", best_acc.item(), "Last accuracy:", acc.item())
 
             sys.stdout.flush()
